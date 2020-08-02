@@ -28,13 +28,22 @@ type Server interface {
 // operating on a clientID.
 type Client interface {
 	// Authorized checks if a client is authorized.
+	//
+	// If the authorization check can be answered immediately, the
+	// return value is a non-nil bool (authorized or not).
+	//
+	// If the check requires a HTML form or some other response,
+	// the Authorized call should render that and return a nil to
+	// indicate it has taken care of it.
 	Authorized(w http.ResponseWriter, r *http.Request, scope string) *bool
 
-	// RedirectUURI checks and returns a redirect_url to use.
+	// RedirectURI returns the URI to redirect to.
 	//
-	// The input uri is optional in which case the default
-	// redirect_uri is returned.
-	RedirectURI(uri string) (string, error)
+	// The uri arg is the optional authorization request
+	// parameteer  "redirect_uri".  If the URI is present and does
+	// not match the configured value, an error should be
+	// returned.
+	RedirectURI(r *http.Request, uri string) (string, error)
 
 	// Code fetches an authorization code grant.
 	//
@@ -99,7 +108,7 @@ func Redirect(w http.ResponseWriter, uri string, params Params) {
 
 	switch status {
 	case "server_error":
-		http.Error(w, description, http.StatusInternalServerError)		
+		http.Error(w, description, http.StatusInternalServerError)
 	default:
 		http.Error(w, description, http.StatusBadRequest)
 	}
@@ -119,7 +128,7 @@ func authorizeCode(s Server, w http.ResponseWriter, r *http.Request) (string, Pa
 	if auth == nil {
 		return "", nil
 	}
-	
+
 	if !*auth {
 		return uri, Params{"state": state, "error": "unauthorized"}
 	}
@@ -131,7 +140,6 @@ func authorizeCode(s Server, w http.ResponseWriter, r *http.Request) (string, Pa
 
 	return uri, Params{"state": state, "code": code}
 }
-
 
 func clientRedirectURI(s Server, w http.ResponseWriter, r *http.Request) (Client, string) {
 	client, err := s.Client(r, r.FormValue("client_id"))
@@ -145,7 +153,7 @@ func clientRedirectURI(s Server, w http.ResponseWriter, r *http.Request) (Client
 		return nil, ""
 	}
 
-	uri, err := client.RedirectURI(r.FormValue("redirect_uri"))
+	uri, err := client.RedirectURI(r, r.FormValue("redirect_uri"))
 	if err != nil {
 		http.Error(w, "invalid redirect_uri", http.StatusBadRequest)
 		return nil, ""
@@ -163,11 +171,11 @@ func redirect(w http.ResponseWriter, uri string, params Params) (string, string)
 	if u.Scheme == "" && u.Host == "" {
 		return "server_error", "invalid request_uri"
 	}
-	
+
 	q, err := url.ParseQuery(u.RawQuery)
 	if err != nil {
 		return "invalid_request", err.Error()
-	}		
+	}
 
 	for key, value := range params {
 		if value != "" {
@@ -184,4 +192,3 @@ type authCodeState struct {
 	State     string `json:"state,omitempty"`
 	Challenge string `json:"code_challenge,omitempty"`
 }
-

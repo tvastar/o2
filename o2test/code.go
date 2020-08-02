@@ -57,7 +57,7 @@ func (s CodeSuite) TestSuccessWithDefaultRedirectURI(t *testing.T) {
 	}
 	q.Del("state")
 	if len(q["code"]) != 1 {
-		t.Fatal("no ccode")
+		t.Fatal("no code", q)
 	}
 	q.Del("code")
 	loc.RawQuery = q.Encode()
